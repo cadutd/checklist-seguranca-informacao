@@ -10,7 +10,6 @@ function DialogoDados({ acao, fechar, concluir }: { acao: Acao; fechar: () => vo
   const dialogo = useRef<HTMLDialogElement>(null)
   const bloqueio = useRef(false)
   const leitura = useRef(0)
-  const [chave, definirChave] = useState('')
   const [confirmacao, definirConfirmacao] = useState('')
   const [backup, definirBackup] = useState<Backup | null>(null)
   const [erro, definirErro] = useState('')
@@ -36,19 +35,18 @@ function DialogoDados({ acao, fechar, concluir }: { acao: Acao; fechar: () => vo
   async function executar(evento: FormEvent) {
     evento.preventDefault()
     if (bloqueio.current || lendo) return
-    if (modo === 'supabase' && acao !== 'limpar' && !chave.trim()) { definirErro('Informe a chave administrativa.'); return }
     if (acao === 'limpar' && confirmacao !== 'EXCLUIR TUDO') return
     if (acao === 'importar' && !backup) return
     bloqueio.current = true; definirOcupado(true); definirErro('')
     try {
       if (acao === 'exportar') {
-        baixarBackup(await exportar(chave))
+        baixarBackup(await exportar())
         concluir('Arquivo JSON exportado. Guarde o backup em local autorizado, pois contém respostas individuais.')
       } else if (acao === 'importar' && backup) {
-        const resultado = await importar(backup, chave)
+        const resultado = await importar(backup)
         concluir(`Importação concluída: ${resultado.importados} diagnóstico(s) adicionado(s); ${resultado.ignorados} ID(s) já existente(s) ignorado(s).`)
       } else {
-        const resultado = await limpar(confirmacao, chave)
+        const resultado = await limpar(confirmacao)
         concluir(`Base de dados limpa: ${resultado.excluidos} diagnóstico(s) excluído(s).`)
       }
     } catch (erro) {
@@ -59,11 +57,10 @@ function DialogoDados({ acao, fechar, concluir }: { acao: Acao; fechar: () => vo
   return <dialog ref={dialogo} className="dialogo-dados" aria-labelledby="titulo-dialogo" onCancel={evento => { evento.preventDefault(); if (!ocupado) fechar() }}>
     <form onSubmit={executar}>
       <h2 id="titulo-dialogo">{titulos[acao]}</h2>
-      <p className="texto-apoio">{modo === 'demonstracao' ? 'Demonstração: a operação afeta somente os dados em memória desta aba.' : 'Operação administrativa sobre a base compartilhada do Supabase.'}</p>
+      <p className="texto-apoio">{modo === 'demonstracao' ? 'Demonstração: a operação afeta somente os dados em memória desta aba.' : 'Operação sobre a base compartilhada do Supabase.'}</p>
       <fieldset disabled={ocupado} className="campos-dialogo">
-        {modo === 'supabase' && acao !== 'limpar' && <><label htmlFor="chave-administrativa">Chave administrativa</label><input id="chave-administrativa" type="password" autoComplete="off" value={chave} onChange={evento => definirChave(evento.target.value)}/><p className="texto-apoio">Use a chave de administração definida para este aplicativo. Não informe a service_role. A chave é descartada ao fechar.</p></>}
-        {acao === 'exportar' && <p>O JSON incluirá os diagnósticos e suas respostas, para permitir restauração. Este arquivo não deve ser compartilhado publicamente.</p>}
-        {acao === 'importar' && <><label htmlFor="arquivo-json">Arquivo JSON de backup</label><input id="arquivo-json" type="file" accept=".json,application/json" onChange={evento => void selecionarArquivo(evento.target.files?.[0])}/><p className="texto-apoio">Até 5 MB e 5.000 diagnósticos. As notas serão recalculadas. IDs já existentes serão ignorados; dados atuais não serão sobrescritos.</p>{lendo && <p role="status">Validando arquivo…</p>}{backup && <p className="aviso sucesso">Arquivo válido: {backup.diagnosticos.length} diagnóstico(s) para importar.</p>}</>}
+        {acao === 'exportar' && <p>O JSON incluirá os diagnósticos e suas respostas, para permitir restauração. Qualquer visitante pode exportar esse backup completo.</p>}
+        {acao === 'importar' && <><label htmlFor="arquivo-json">Arquivo JSON de backup</label><input id="arquivo-json" type="file" accept=".json,application/json" onChange={evento => void selecionarArquivo(evento.target.files?.[0])}/><p className="texto-apoio">Até 5 MB. A base comporta até 200 diagnósticos. Se os IDs novos excederem as vagas, nada será importado. As notas serão recalculadas. IDs já existentes serão ignorados; dados atuais não serão sobrescritos.</p>{lendo && <p role="status">Validando arquivo…</p>}{backup && <p className="aviso sucesso">Arquivo válido: {backup.diagnosticos.length} diagnóstico(s) para importar.</p>}</>}
         {acao === 'limpar' && <><p className="alerta-exclusao">Todos os diagnósticos serão excluídos ({diagnosticos.length} atualmente no painel). A exclusão não pode ser desfeita na aplicação. Você pode exportar um backup antes.</p><label htmlFor="confirmacao-exclusao">Digite EXCLUIR TUDO para confirmar</label><input id="confirmacao-exclusao" value={confirmacao} autoComplete="off" onChange={evento => definirConfirmacao(evento.target.value)}/></>}
       </fieldset>
       {erro && <p role="alert" className="erro">{erro}</p>}
@@ -72,12 +69,13 @@ function DialogoDados({ acao, fechar, concluir }: { acao: Acao; fechar: () => vo
   </dialog>
 }
 export function GerenciarDados() {
+  const { diagnosticos } = useDiagnosticos()
   const [acao, definirAcao] = useState<Acao | null>(null)
   const [mensagem, definirMensagem] = useState('')
   const origem = useRef<HTMLButtonElement | null>(null)
   function fechar() { definirAcao(null); origem.current?.focus() }
   return <section className="cartao gestao-dados" aria-label="Dados do sistema">
-    <div><h2>Dados do sistema</h2><p className="texto-apoio">Backup, restauração e limpeza dos diagnósticos.</p></div>
+    <div><h2>Dados do sistema</h2><p className="texto-apoio">Backup, restauração e limpeza dos diagnósticos. Capacidade: {diagnosticos.length} de 200.</p></div>
     <div className="botoes-dados">{(['exportar', 'importar', 'limpar'] as const).map(item => <button key={item} className={`botao-secundario ${item === 'limpar' ? 'texto-perigo' : ''}`} type="button" aria-haspopup="dialog" onClick={evento => { origem.current = evento.currentTarget; definirMensagem(''); definirAcao(item) }}>{item === 'exportar' ? 'Exportar JSON' : item === 'importar' ? 'Importar JSON' : 'Limpar base de dados'}</button>)}</div>
     {mensagem && <p role="status" className="mensagem-dados">{mensagem}</p>}
     {acao && <DialogoDados acao={acao} fechar={fechar} concluir={mensagem => { definirMensagem(mensagem); fechar() }}/>}

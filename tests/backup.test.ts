@@ -6,22 +6,22 @@ import { criarRepositorioMemoria } from '../src/services/memoria'
 describe('Backup e restauração em JSON', () => {
   it('exporta os dados necessários e restaura preservando IDs, respostas e datas', async () => {
     const repositorio = criarRepositorioMemoria()
-    const backup = await repositorio.exportar('')
+    const backup = await repositorio.exportar()
     expect(backup.diagnosticos).toHaveLength(5)
     expect(backup.diagnosticos[0].respostas.COMP01).toBe('sim')
     expect(backup.diagnosticos[0]).not.toHaveProperty('nota')
     expect(backup).not.toHaveProperty('chave')
-    await repositorio.limpar('EXCLUIR TUDO', '')
+    await repositorio.limpar('EXCLUIR TUDO')
     expect(await repositorio.listar()).toEqual([])
-    expect(await repositorio.importar(JSON.parse(JSON.stringify(backup)), '')).toEqual({ importados: 5, ignorados: 0 })
+    expect(await repositorio.importar(JSON.parse(JSON.stringify(backup)))).toEqual({ importados: 5, ignorados: 0 })
     expect(await repositorio.listar()).toEqual(registrosDemonstrativos.map(resumirRegistro))
-    expect(await repositorio.importar(backup, '')).toEqual({ importados: 0, ignorados: 5 })
+    expect(await repositorio.importar(backup)).toEqual({ importados: 0, ignorados: 5 })
   })
   it('não modifica a base quando qualquer registro é inválido', async () => {
     const repositorio = criarRepositorioMemoria([])
     const backup = criarBackup(registrosDemonstrativos)
     backup.diagnosticos[4].respostas.COMP01 = 'talvez' as never
-    await expect(repositorio.importar(backup, '')).rejects.toThrow('Diagnóstico 5')
+    await expect(repositorio.importar(backup)).rejects.toThrow('Diagnóstico 5')
     expect(await repositorio.listar()).toEqual([])
   })
   it('rejeita formato, versão, IDs repetidos, datas e campos extras', () => {
@@ -36,9 +36,9 @@ describe('Backup e restauração em JSON', () => {
   })
   it('exige confirmação exata e não limpa a base se ela faltar', async () => {
     const repositorio = criarRepositorioMemoria()
-    await expect(repositorio.limpar('excluir tudo', '')).rejects.toThrow()
+    await expect(repositorio.limpar('excluir tudo')).rejects.toThrow()
     expect(await repositorio.listar()).toHaveLength(5)
-    expect(await repositorio.limpar('EXCLUIR TUDO', '')).toEqual({ excluidos: 5 })
+    expect(await repositorio.limpar('EXCLUIR TUDO')).toEqual({ excluidos: 5 })
   })
   it('rejeita notas fornecidas no envio e usa ordem canônica das respostas', () => {
     const dados = { instituicao: 'Arquivo', respostas: registrosDemonstrativos[0].respostas, versaoQuestionario: 1, idEnvio: crypto.randomUUID() }
@@ -47,4 +47,16 @@ describe('Backup e restauração em JSON', () => {
     const invertidas = Object.fromEntries(Object.entries(dados.respostas).reverse())
     expect(JSON.stringify(validarEnvio({ ...dados, respostas: invertidas }))).toBe(JSON.stringify(validarEnvio(dados)))
   })
+})
+
+it('aplica a capacidade de 200 na demonstração e mantém importação atômica', async () => {
+  const existentes = Array.from({ length: 199 }, (_, i) => ({ ...structuredClone(registrosDemonstrativos[0]), id: crypto.randomUUID(), instituicao: `Arquivo ${i}` }))
+  const repositorio = criarRepositorioMemoria(existentes)
+  const novos = Array.from({ length: 2 }, () => ({ ...structuredClone(registrosDemonstrativos[0]), id: crypto.randomUUID() }))
+  await expect(repositorio.importar(criarBackup(novos))).rejects.toThrow('200')
+  expect(await repositorio.listar()).toHaveLength(199)
+  expect(await repositorio.importar(criarBackup([existentes[0], novos[0]]))).toEqual({ importados: 1, ignorados: 1 })
+  expect(await repositorio.importar(criarBackup([novos[0]]))).toEqual({ importados: 0, ignorados: 1 })
+  await expect(repositorio.enviar({ instituicao: 'Novo arquivo', respostas: novos[0].respostas, versaoQuestionario: 1, idEnvio: crypto.randomUUID() })).rejects.toThrow('200')
+  expect(await repositorio.listar()).toHaveLength(200)
 })

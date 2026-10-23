@@ -21,11 +21,7 @@ export function converterResultado(entrada: unknown): Diagnostico {
   return { id: validarUuid(d.id), instituicao: normalizarNome(d.instituicao), nota, dimensoes: notasDimensoes, quantidadeNaoSei, versaoQuestionario: 1, data: d.criado_em, classificacao: classificarNota(nota) }
 }
 export function criarRepositorioSupabase(configuracao: ConfiguracaoSupabase): RepositorioDiagnosticos {
-  const administrar = (corpo: unknown, chave: string) => {
-    if (!chave.trim()) throw new Error('Informe a chave administrativa.')
-    if (!configuracao.chave.startsWith('eyJ')) throw new Error('A administração desta publicação exige a chave pública anon (JWT) na configuração do Supabase.')
-    return requisitar(configuracao, '/functions/v1/administrar-diagnosticos', corpo, chave)
-  }
+  const administrar = (corpo: unknown) => requisitar(configuracao, '/functions/v1/administrar-diagnosticos', corpo)
   return {
     modo: 'supabase',
     async listar() {
@@ -37,9 +33,9 @@ export function criarRepositorioSupabase(configuracao: ConfiguracaoSupabase): Re
       const dados = objeto(await requisitar(configuracao, '/functions/v1/enviar-diagnostico', envio))
       return converterResultado(dados.diagnostico)
     },
-    async exportar(chave) { return validarBackup(await administrar({ acao: 'exportar' }, chave)) },
-    async importar(backup, chave) {
-      const dados = objeto(await administrar({ acao: 'importar', backup: validarBackup(backup) }, chave))
+    async exportar() { return validarBackup(await administrar({ acao: 'exportar' })) },
+    async importar(backup) {
+      const dados = objeto(await administrar({ acao: 'importar', backup: validarBackup(backup) }))
       if (!Number.isInteger(dados.importados) || !Number.isInteger(dados.ignorados)) throw new Error('Resposta de importação inválida.')
       return { importados: dados.importados as number, ignorados: dados.ignorados as number }
     },

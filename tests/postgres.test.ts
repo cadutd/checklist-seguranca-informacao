@@ -2,6 +2,8 @@
 import { beforeAll, beforeEach, afterAll, afterEach, describe, expect, it } from 'vitest'
 import migration from '../supabase/migrations/20261023021014_diagnosticos.sql?raw'
 import protecao from '../supabase/migrations/20261023021117_protecao_projecao_publica.sql?raw'
+import capacidade from '../supabase/migrations/20261023025037_limite_200_diagnosticos.sql?raw'
+import { ErroCapacidade } from '../supabase/functions/_shared/capacidade.ts'
 import { PGlite } from '@electric-sql/pglite'
 import { registrosDemonstrativos } from '../src/data/diagnosticos'
 import { criarBackup, registroParaBanco } from '../supabase/functions/_shared/contratos.ts'
@@ -13,6 +15,7 @@ beforeAll(async () => {
   await banco.exec('create role anon; create role authenticated; create role service_role bypassrls;')
   await banco.exec(migration)
   await banco.exec(protecao)
+  await banco.exec(capacidade)
 }, 30000)
 beforeEach(async () => { await banco.exec('reset role; truncate table privado.envios, privado.limites, public.diagnosticos;') })
 afterEach(async () => { await banco.exec('reset role;') })
@@ -20,7 +23,9 @@ afterAll(async () => { await banco?.close() })
 async function rpc(nome: string, parametros: Record<string, unknown> = {}) {
   const entradas = Object.entries(parametros)
   const argumentos = entradas.map(([campo], indice) => `${campo} => $${indice + 1}`).join(', ')
-  const resultado = await banco.query<{ resultado: unknown }>(`select public.${nome}(${argumentos}) as resultado`, entradas.map(([, valor]) => typeof valor === 'object' ? JSON.stringify(valor) : valor))
+  let resultado
+  try { resultado = await banco.query<{ resultado: unknown }>(`select public.${nome}(${argumentos}) as resultado`, entradas.map(([, valor]) => typeof valor === 'object' ? JSON.stringify(valor) : valor))
+  } catch (erro) { if ((erro as { code?: string }).code === 'P0200') throw new ErroCapacidade(); throw erro }
   return resultado.rows[0].resultado as Record<string, unknown>
 }
 async function importarExemplos() { return rpc('importar_diagnosticos', { p_registros: registrosDemonstrativos.map(registroParaBanco) }) }
@@ -105,12 +110,12 @@ describe('Edge Functions integradas ao PostgreSQL', () => {
     expect((await enviar(requisicao({ ...dadosEnvio(), ...alteracoes }))).status).toBe(400)
     expect(await rpc('listar_resultados')).toEqual([])
   })
-  it('valida exportação, importação e limpeza com as respectivas regras de chave e confirmação no servidor', async () => {
+  it('exporta e importa sem chave e mantém a confirmação obrigatória na limpeza', async () => {
     await importarExemplos()
-    expect((await administrar(requisicao({ acao: 'exportar' }))).status).toBe(401)
-    expect((await administrar(requisicao({ acao: 'importar', backup: {} }))).status).toBe(401)
+    expect((await administrar(requisicao({ acao: 'exportar' }))).status).toBe(200)
+    expect((await administrar(requisicao({ acao: 'importar', backup: {} }))).status).toBe(400)
     expect((await administrar(requisicao({ acao: 'limpar', confirmacao: 'não' }))).status).toBe(400)
-    const exportacao = await administrar(requisicao({ acao: 'exportar' }, true))
+    const exportacao = await administrar(requisicao({ acao: 'exportar' }))
     expect(exportacao.status).toBe(200)
     const backup = await exportacao.json()
     expect(backup.diagnosticos).toHaveLength(5)
@@ -118,7 +123,7 @@ describe('Edge Functions integradas ao PostgreSQL', () => {
     expect((await administrar(requisicao({ acao: 'limpar', confirmacao: 'EXCLUIR TUDO' }))).status).toBe(200)
     expect(await rpc('listar_resultados')).toEqual([])
     // A limpeza também reinicia os controles administrativos desta base isolada.
-    const restauracao = await administrar(requisicao({ acao: 'importar', backup }, true))
+    const restauracao = await administrar(requisicao({ acao: 'importar', backup }))
     expect(await restauracao.json()).toEqual({ importados: 5, ignorados: 0 })
     expect(await rpc('listar_resultados')).toHaveLength(5)
   })
@@ -127,7 +132,7 @@ describe('Edge Functions integradas ao PostgreSQL', () => {
     const invalido = { ...backup, diagnosticos: [...backup.diagnosticos.slice(0, 4), { ...backup.diagnosticos[4], nota_total: 100 }] }
     expect((await administrar(requisicao({ acao: 'importar', backup: invalido }, true))).status).toBe(400)
     expect(await rpc('listar_resultados')).toEqual([])
-    expect((await administrar(requisicao({ acao: 'importar', backup }, true))).status).toBe(200)
+    expect((await administrar(requisicao({ acao: 'importar', backup }))).status).toBe(200)
     const resultados = await rpc('listar_resultados') as unknown as Record<string, unknown>[]
     expect(resultados.map(r => r.nota_total).sort((a, b) => Number(a) - Number(b))).toEqual([15, 30, 45, 65, 85])
   })
@@ -146,3 +151,59 @@ describe('Edge Functions integradas ao PostgreSQL', () => {
 
 
 
+function novosRegistros(quantidade: number) {
+  return Array.from({ length: quantidade }, (_, i) => ({ ...structuredClone(registrosDemonstrativos[0]), id: crypto.randomUUID(), instituicao: `Arquivo de capacidade ${i}` }))
+}
+describe('Capacidade transacional de 200 diagnósticos', () => {
+  it('aceita o 200º envio, preserva retry e recusa o 201º sem gravar', async () => {
+    await rpc('importar_diagnosticos', { p_registros: novosRegistros(199).map(registroParaBanco) })
+    const dados = dadosEnvio()
+    const ultimo = await enviar(requisicao(dados))
+    expect(ultimo.status).toBe(201)
+    expect((await enviar(requisicao(dados))).status).toBe(200)
+    const excesso = await enviar(requisicao({ ...dados, idEnvio: crypto.randomUUID(), instituicao: 'Novo arquivo sem vaga' }))
+    expect(excesso.status).toBe(409)
+    expect((await excesso.json()).erro).toContain('200')
+    expect(await rpc('listar_resultados')).toHaveLength(200)
+    expect((await banco.query('select total from privado.capacidade')).rows).toEqual([{ total: 200 }])
+  })
+  it('reverte a importação inteira se os IDs novos excedem as vagas e ignora existentes', async () => {
+    const existentes = novosRegistros(199)
+    await rpc('importar_diagnosticos', { p_registros: existentes.map(registroParaBanco) })
+    const novos = novosRegistros(2)
+    const excessivo = criarBackup([existentes[0], ...novos])
+    expect((await administrar(requisicao({ acao: 'importar', backup: excessivo }))).status).toBe(409)
+    expect(await rpc('listar_resultados')).toHaveLength(199)
+    const valido = criarBackup([existentes[0], novos[0]])
+    const resultado = await administrar(requisicao({ acao: 'importar', backup: valido }))
+    expect(await resultado.json()).toEqual({ importados: 1, ignorados: 1 })
+    const repetido = await administrar(requisicao({ acao: 'importar', backup: valido }))
+    expect(await repetido.json()).toEqual({ importados: 0, ignorados: 2 })
+    expect(await rpc('listar_resultados')).toHaveLength(200)
+  })
+  it('protege inserção direta pelo servidor e libera vagas após exclusão ou limpeza', async () => {
+    await banco.exec('set role service_role;')
+    await rpc('importar_diagnosticos', { p_registros: novosRegistros(200).map(registroParaBanco) })
+    await expect(banco.query(`insert into public.diagnosticos(id, instituicao, respostas, nota_total, notas_dimensoes, quantidade_nao_sei, versao_questionario)
+      select gen_random_uuid(), instituicao, respostas, nota_total, notas_dimensoes, quantidade_nao_sei, versao_questionario from public.diagnosticos limit 1`)).rejects.toMatchObject({ code: 'P0200' })
+    await banco.exec('delete from public.diagnosticos where id = (select id from public.diagnosticos limit 1);')
+    expect((await banco.query('select total from privado.capacidade')).rows).toEqual([{ total: 199 }])
+    expect(await rpc('importar_diagnosticos', { p_registros: novosRegistros(1).map(registroParaBanco) })).toEqual({ importados: 1, ignorados: 0 })
+    await rpc('limpar_diagnosticos', { p_confirmacao: 'EXCLUIR TUDO' })
+    expect((await banco.query('select total from privado.capacidade')).rows).toEqual([{ total: 0 }])
+    expect(await rpc('importar_diagnosticos', { p_registros: novosRegistros(1).map(registroParaBanco) })).toEqual({ importados: 1, ignorados: 0 })
+  })
+  it('recusa lote de 201 em base vazia e mantém o contador consistente após rollback', async () => {
+    await expect(rpc('importar_diagnosticos', { p_registros: novosRegistros(201).map(registroParaBanco) })).rejects.toThrow('200')
+    expect(await rpc('listar_resultados')).toEqual([])
+    expect((await banco.query('select total from privado.capacidade')).rows).toEqual([{ total: 0 }])
+  })
+})
+
+it('serializa tentativas simultâneas para a última vaga', async () => {
+  await rpc('importar_diagnosticos', { p_registros: novosRegistros(199).map(registroParaBanco) })
+  const respostas = await Promise.all([enviar(requisicao({ ...dadosEnvio(), instituicao: 'Concorrente um' })), enviar(requisicao({ ...dadosEnvio(), instituicao: 'Concorrente dois' }))])
+  expect(respostas.map(r => r.status).sort()).toEqual([201, 409])
+  expect(await rpc('listar_resultados')).toHaveLength(200)
+  expect((await banco.query('select total from privado.capacidade')).rows).toEqual([{ total: 200 }])
+})

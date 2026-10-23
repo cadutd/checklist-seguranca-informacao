@@ -119,14 +119,14 @@ it('apresenta falha de conexão em português sem trocar a base real por dados s
 
 
 
-it('envia o JWT público ao gateway administrativo e mantém a chave administrativa no cabeçalho próprio', async () => {
+it('exporta com JWT público sem enviar chave administrativa', async () => {
   const buscar = vi.fn().mockResolvedValue(new Response(JSON.stringify({ formato: 'checklist-seguranca-informacao', versao: 1, exportadoEm: '2026-10-22T12:00:00.000Z', diagnosticos: [] })))
   vi.stubGlobal('fetch', buscar)
   const chavePublica = 'eyJhbGciOiJIUzI1NiJ9.' + btoa(JSON.stringify({ role: 'anon' })) + '.assinatura'
   const repositorio = criarRepositorioSupabase({ url: 'https://exemplo.supabase.co', chave: chavePublica })
-  await repositorio.exportar('chave-administrativa-de-teste')
+  await repositorio.exportar()
   expect(buscar.mock.calls[0][1].headers.Authorization).toBe('Bearer ' + chavePublica)
-  expect(buscar.mock.calls[0][1].headers['x-admin-key']).toBe('chave-administrativa-de-teste')
+  expect(buscar.mock.calls[0][1].headers['x-admin-key']).toBeUndefined()
   expect(buscar.mock.calls[0][1].body).not.toContain('chave-administrativa-de-teste')
 })
 
@@ -134,7 +134,17 @@ it('envia a limpeza sem chave administrativa e com confirmação explícita', as
   const buscar = vi.fn().mockResolvedValue(new Response(JSON.stringify({ excluidos: 3 })))
   vi.stubGlobal('fetch', buscar)
   const repositorio = criarRepositorioSupabase({ url: 'https://exemplo.supabase.co', chave: 'eyJ.publica.assinatura' })
-  expect(await repositorio.limpar('EXCLUIR TUDO', '')).toEqual({ excluidos: 3 })
+  expect(await repositorio.limpar('EXCLUIR TUDO')).toEqual({ excluidos: 3 })
   expect(buscar.mock.calls[0][1].headers['x-admin-key']).toBeUndefined()
   expect(JSON.parse(buscar.mock.calls[0][1].body)).toEqual({ acao: 'limpar', confirmacao: 'EXCLUIR TUDO' })
+})
+
+it('importa sem enviar chave administrativa', async () => {
+  const buscar = vi.fn().mockResolvedValue(new Response(JSON.stringify({ importados: 0, ignorados: 0 })))
+  vi.stubGlobal('fetch', buscar)
+  const repositorio = criarRepositorioSupabase({ url: 'https://exemplo.supabase.co', chave: 'eyJ.publica.assinatura' })
+  const backup = { formato: 'checklist-seguranca-informacao' as const, versao: 1 as const, exportadoEm: '2026-10-22T12:00:00.000Z', diagnosticos: [] }
+  expect(await repositorio.importar(backup)).toEqual({ importados: 0, ignorados: 0 })
+  expect(buscar.mock.calls[0][1].headers['x-admin-key']).toBeUndefined()
+  expect(JSON.parse(buscar.mock.calls[0][1].body)).toEqual({ acao: 'importar', backup })
 })

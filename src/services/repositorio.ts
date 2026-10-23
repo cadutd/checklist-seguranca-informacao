@@ -6,8 +6,8 @@ export interface RepositorioDiagnosticos {
   iniciais?: Diagnostico[]
   listar(): Promise<Diagnostico[]>
   enviar(envio: Envio): Promise<Diagnostico>
-  exportar(chave: string): Promise<Backup>
-  importar(backup: Backup, chave: string): Promise<ResultadoImportacao>
-  limpar(confirmacao: string, chave: string): Promise<{ excluidos: number }>
+  exportar(): Promise<Backup>
+  importar(backup: Backup): Promise<ResultadoImportacao>
+  limpar(confirmacao: string): Promise<{ excluidos: number }>
 }
 export type { Backup, Envio, RegistroBackup }

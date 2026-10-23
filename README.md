@@ -51,7 +51,7 @@ VITE_MODO_DEMONSTRACAO=false
 VITE_BASE_PATH=/checklist-seguranca-informacao/
 ```
 
-Esta publicação usa a chave pública `anon` no formato JWT porque a função administrativa mantém a verificação JWT da plataforma ativa. O navegador envia esse JWT público no cabeçalho Authorization e a chave administrativa do aplicativo em um cabeçalho separado. A chave `anon` não concede leitura das respostas nem escrita direta: RLS, grants e os endpoints continuam impondo as restrições.
+Esta publicação usa a chave pública `anon` no formato JWT porque a função administrativa mantém a verificação JWT da plataforma ativa. O navegador envia esse JWT público automaticamente no cabeçalho Authorization; nenhuma operação pede chave administrativa. RLS e grants bloqueiam leitura das respostas e escrita diretamente na tabela; o endpoint público de exportação oferece o backup completo.
 
 Chaves `sb_publishable_...` são compatíveis com as consultas públicas e o envio, mas a administração desta configuração exige a chave pública `anon` JWT. Nunca coloque `service_role`, `sb_secret_...`, `ADMIN_API_TOKEN` ou `RATE_LIMIT_SALT` em variáveis `VITE_*`. O Vite recusa chaves privilegiadas no campo público antes de gerar o build.
 
@@ -59,15 +59,17 @@ Sem URL e chave configuradas, a aplicação exibe explicitamente a demonstraçã
 
 ## Administração: exportar, importar e limpar
 
-Os três botões ficam em **Dados do sistema**. Participantes não precisam de cadastro ou login. Exportar e importar exigem a chave do aplicativo `ADMIN_API_TOKEN`. A limpeza exige somente digitar exatamente `EXCLUIR TUDO` e confirmar; qualquer visitante pode executá-la. O JWT público da plataforma continua sendo enviado automaticamente.
+Os três botões ficam em **Dados do sistema**. Participantes não precisam de cadastro ou login. Qualquer visitante pode exportar o backup completo com respostas individuais e importar diagnósticos sem autenticação. A limpeza exige somente digitar exatamente `EXCLUIR TUDO` e confirmar. O JWT público da plataforma é enviado automaticamente.
 
 - **Exportar JSON**: baixa IDs, nomes, respostas, versão do questionário e datas. O backup não contém credenciais nem controles de requisições.
 - **Importar JSON**: valida o arquivo inteiro e recalcula todas as notas no servidor. Preserva IDs e datas; ignora IDs existentes sem sobrescrevê-los. A gravação ocorre em uma única transação. Um registro inválido impede a importação completa.
 - **Limpar base de dados**: exige digitar exatamente `EXCLUIR TUDO` e confirmar. Cancelar/Escape não exclui nada. Remove diagnósticos e controles de envio, preservando a estrutura do banco. Não existe desfazer automático; exporte antes se precisar de backup.
 
-Limite da interface: 5 MB e 5.000 diagnósticos. Se a base ultrapassar esse limite, a exportação é recusada integralmente, sem truncamento; utilize as ferramentas administrativas do Supabase.
+Capacidade total do banco: **200 diagnósticos**. O 201º envio é recusado, preservando o formulário. A importação ignora IDs existentes e é recusada integralmente se os IDs novos excederem as vagas. Um contador transacional com triggers protege também escritas concorrentes e reinicia após limpeza. O limite vale igualmente no modo demonstrativo.
 
-A chave de administração gerada nesta máquina está na variável `ADMIN_API_TOKEN` do arquivo local `.env.functions.local`. Abra esse arquivo localmente para consultá-la. Não compartilhe o arquivo nem o envie ao GitHub. Ela não é a `service_role`; é digitada somente no diálogo e descartada ao fechá-lo. Os arquivos privados estão no `.gitignore`.
+Limite de leitura de arquivo: 5 MB e 5.000 registros. Essa tolerância permite validar backups anteriores; não amplia a capacidade da base. Se a base ultrapassar esse limite, a exportação é recusada integralmente, sem truncamento; utilize as ferramentas administrativas do Supabase.
+
+Não há chave administrativa a informar. `.env.functions.local` continua privado porque contém o sal dos limites de requisições; não o compartilhe.
 
 Os backups contêm respostas individuais: guarde-os em local autorizado. O painel público mostra somente resumos.
 
@@ -90,6 +92,7 @@ Migrations versionadas e aplicadas no projeto remoto:
 
 1. `supabase/migrations/20261023021014_diagnosticos.sql`: tabela, índices, projeção pública, limites e RPCs.
 2. `supabase/migrations/20261023021117_protecao_projecao_publica.sql`: view com `security_invoker`, permissões por coluna, política de leitura dos resumos e funções administrativas executadas com os privilégios explícitos do servidor.
+3. `supabase/migrations/20261023025037_limite_200_diagnosticos.sql`: contador transacional e triggers de inserção, exclusão e limpeza para a capacidade de 200.
 
 A tabela completa e a coluna `respostas` são inacessíveis aos papéis públicos. Somente as sete colunas autorizadas podem ser lidas. Não existem grants públicos de INSERT, UPDATE ou DELETE. As tabelas de controle ficam em um schema privado com RLS; somente o papel do servidor consegue operá-las.
 
@@ -114,11 +117,11 @@ npx supabase functions deploy enviar-diagnostico --project-ref mjjaomrciobpbsozx
 npx supabase functions deploy administrar-diagnosticos --project-ref mjjaomrciobpbsozxqcy --use-api
 ```
 
-Somente o envio é público (`verify_jwt=false`), pois não há login de participantes. A administração fica com `verify_jwt=true` em `supabase/config.toml` e valida também sua própria chave no servidor.
+O envio não exige JWT (`verify_jwt=false`), pois não há login de participantes. Todas as operações são acessíveis aos visitantes; A administração fica com `verify_jwt=true` em `supabase/config.toml` sem exigir chave administrativa do visitante.
 
 ### Segredos do servidor
 
-`ADMIN_API_TOKEN`, `RATE_LIMIT_SALT` e `ALLOWED_ORIGINS` foram cadastrados no Supabase a partir de `.env.functions.local`. `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` são fornecidos pelo ambiente hospedado e ficam exclusivamente no servidor.
+`RATE_LIMIT_SALT` e `ALLOWED_ORIGINS` foram cadastrados no Supabase a partir de `.env.functions.local`. `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` são fornecidos pelo ambiente hospedado e ficam exclusivamente no servidor.
 
 As origens autorizadas incluem `https://cadutd.github.io` e os endereços locais de desenvolvimento/preview. Origem é protocolo, host e porta; o caminho do repositório não faz parte dela.
 

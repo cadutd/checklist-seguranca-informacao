@@ -76,6 +76,6 @@ describe('Botões de dados do sistema', () => {
     expect(screen.getByTestId('quantidade')).toHaveTextContent('5')
     await usuario.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancelar' }))
     await usuario.click(screen.getByRole('button', { name: 'Exportar JSON' }))
-    expect(screen.getByLabelText('Chave administrativa')).toHaveValue('')
+    expect(screen.queryByLabelText('Chave administrativa')).not.toBeInTheDocument()
   })
 })

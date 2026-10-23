@@ -1,4 +1,5 @@
 import type { DependenciasServidor } from './handlers.ts'
+import { ErroCapacidade } from './capacidade.ts'
 
 export function criarDependencias(ambiente: DependenciasServidor['ambiente']): DependenciasServidor {
   return {
@@ -12,7 +13,11 @@ export function criarDependencias(ambiente: DependenciasServidor['ambiente']): D
         headers: { apikey: chave, Authorization: `Bearer ${chave}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(parametros),
       })
-      if (!resposta.ok) throw new Error('Falha na operação do banco de dados.')
+      if (!resposta.ok) {
+        const erro = await resposta.json().catch(() => null)
+        if (erro?.code === 'P0200') throw new ErroCapacidade()
+        throw new Error('Falha na operação do banco de dados.')
+      }
       return resposta.json()
     },
   }

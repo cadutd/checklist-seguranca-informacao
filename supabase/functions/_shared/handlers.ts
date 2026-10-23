@@ -1,4 +1,5 @@
 import { criarBackup, validarBackup, validarEnvio, registroParaBanco, camposExatos, objeto, limiteArquivo, limiteRegistros } from './contratos.ts'
+import { ErroCapacidade } from './capacidade.ts'
 
 export interface DependenciasServidor {
   ambiente: (nome: string) => string | undefined
@@ -10,12 +11,6 @@ class ErroHttp extends Error {
 const codificador = new TextEncoder()
 async function resumoHash(valor: string) {
   return new Uint8Array(await crypto.subtle.digest('SHA-256', codificador.encode(valor)))
-}
-async function chavesIguais(recebida: string, esperada: string) {
-  const [primeira, segunda] = await Promise.all([resumoHash(recebida), resumoHash(esperada)])
-  let diferenca = 0
-  for (let i = 0; i < primeira.length; i++) diferenca |= primeira[i] ^ segunda[i]
-  return diferenca === 0
 }
 async function hashOrigem(req: Request, segredo: string) {
   const ip = (req.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'origem-indisponivel').slice(0, 128)
@@ -73,13 +68,6 @@ export function criarHandler(tipo: 'enviar' | 'administrar', deps: DependenciasS
       const permitido = await deps.rpc('verificar_limite', { p_origem: origemHash, p_administrativo: tipo === 'administrar' })
       if (permitido !== true) throw new ErroHttp(429, 'Limite de requisições atingido. Aguarde antes de tentar novamente.')
       const entrada = await lerJson(req, tipo === 'enviar' ? 16 * 1024 : limiteArquivo + 1024)
-      const limpeza = tipo === 'administrar' && validar(() => objeto(entrada)).acao === 'limpar'
-      if (tipo === 'administrar' && !limpeza) {
-        const esperada = deps.ambiente('ADMIN_API_TOKEN') ?? ''
-        if (esperada.length < 32) throw new ErroHttp(503, 'As operações administrativas ainda não foram configuradas.')
-        const recebida = req.headers.get('x-admin-key') ?? ''
-        if (!recebida || recebida.length > 512 || !await chavesIguais(recebida, esperada)) throw new ErroHttp(401, 'Chave administrativa inválida.')
-      }
       if (tipo === 'enviar') {
         const envio = validar(() => validarEnvio(entrada))
         const assinatura = Array.from(await resumoHash(JSON.stringify({ instituicao: envio.instituicao, respostas: envio.respostas, versaoQuestionario: envio.versaoQuestionario })), valor => valor.toString(16).padStart(2, '0')).join('')
@@ -110,6 +98,7 @@ export function criarHandler(tipo: 'enviar' | 'administrar', deps: DependenciasS
       }
       throw new ErroHttp(400, 'Operação administrativa desconhecida.')
     } catch (erro) {
+      if (erro instanceof ErroCapacidade) return responder(409, { erro: erro.message })
       if (erro instanceof ErroHttp) {
         if (erro.status === 429) cabecalhos['Retry-After'] = '60'
         return responder(erro.status, { erro: erro.message })

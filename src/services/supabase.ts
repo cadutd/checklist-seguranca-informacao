@@ -12,11 +12,11 @@ export function obterConfiguracao(): ConfiguracaoSupabase | null {
   validarChavePublica(chave)
   return { url: url.replace(/\/$/, ''), chave }
 }
-export async function requisitar(configuracao: ConfiguracaoSupabase, caminho: string, corpo: unknown, chaveAdmin?: string): Promise<unknown> {
+export async function requisitar(configuracao: ConfiguracaoSupabase, caminho: string, corpo: unknown): Promise<unknown> {
   let resposta: Response
   try { resposta = await fetch(`${configuracao.url}${caminho}`, {
     method: 'POST', signal: AbortSignal.timeout(25000),
-    headers: { apikey: configuracao.chave, ...(configuracao.chave.startsWith('eyJ') ? { Authorization: 'Bearer ' + configuracao.chave } : {}), 'Content-Type': 'application/json', ...(chaveAdmin ? { 'x-admin-key': chaveAdmin } : {}) },
+    headers: { apikey: configuracao.chave, ...(configuracao.chave.startsWith('eyJ') ? { Authorization: 'Bearer ' + configuracao.chave } : {}), 'Content-Type': 'application/json' },
     body: JSON.stringify(corpo),
   })
   } catch { throw new Error('Não foi possível conectar ao Supabase. Verifique a conexão e tente novamente.') }

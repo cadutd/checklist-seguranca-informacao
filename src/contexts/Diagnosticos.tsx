@@ -10,9 +10,9 @@ interface ContextoDiagnosticos {
   erro: string
   atualizar: () => Promise<void>
   enviarDiagnostico: (envio: Envio) => Promise<Diagnostico>
-  exportar: (chave: string) => Promise<Backup>
-  importar: (backup: Backup, chave: string) => Promise<ResultadoImportacao>
-  limpar: (confirmacao: string, chave: string) => Promise<{ excluidos: number }>
+  exportar: () => Promise<Backup>
+  importar: (backup: Backup) => Promise<ResultadoImportacao>
+  limpar: (confirmacao: string) => Promise<{ excluidos: number }>
 }
 const Contexto = createContext<ContextoDiagnosticos | null>(null)
 export function ProvedorDiagnosticos({ children, repositorio: fornecido }: { children: ReactNode; repositorio?: RepositorioDiagnosticos }) {
@@ -44,20 +44,20 @@ export function ProvedorDiagnosticos({ children, repositorio: fornecido }: { chi
     definirDiagnosticos(atuais => [diagnostico, ...atuais.filter(d => d.id !== diagnostico.id)])
     return diagnostico
   }
-  async function importar(backup: Backup, chave: string) {
-    const resultado = await repositorio.importar(backup, chave)
+  async function importar(backup: Backup) {
+    const resultado = await repositorio.importar(backup)
     await sincronizar()
     return resultado
   }
-  async function limpar(confirmacao: string, chave: string) {
-    const resultado = await repositorio.limpar(confirmacao, chave)
+  async function limpar(confirmacao: string) {
+    const resultado = await repositorio.limpar(confirmacao)
     geracao.current++
     definirDiagnosticos([])
     await consulta.current
     await atualizar()
     return resultado
   }
-  return <Contexto.Provider value={{ diagnosticos, modo: repositorio.modo, carregando, erro, atualizar, enviarDiagnostico, exportar: chave => repositorio.exportar(chave), importar, limpar }}>{children}</Contexto.Provider>
+  return <Contexto.Provider value={{ diagnosticos, modo: repositorio.modo, carregando, erro, atualizar, enviarDiagnostico, exportar: () => repositorio.exportar(), importar, limpar }}>{children}</Contexto.Provider>
 }
 export function useDiagnosticos() {
   const contexto = useContext(Contexto)
