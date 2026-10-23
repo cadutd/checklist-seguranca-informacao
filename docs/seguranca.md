@@ -24,6 +24,8 @@ A CSP permite estilos inline porque o Recharts usa atributos de estilo; scripts 
 
 ## Evidências
 
+Atualização de acesso: por solicitação do responsável, a limpeza exige somente `EXCLUIR TUDO`, validado também no servidor. Qualquer visitante pode apagar todos os diagnósticos com essa confirmação. Exportar e importar continuam exigindo a chave administrativa. A limpeza preserva as restrições de acesso direto ao banco, os limites de requisições e o JWT público da plataforma.
+
 - Suíte de testes em `tests/`: pontuação, validação de JSON, importação atômica, negação de acessos, controle de abuso, idempotência, confirmação de limpeza, carregamento, polling e preservação do formulário.
 - `scripts/verificar-build.mjs`: configuração pública e caminho dos artefatos.
 - `scripts/verificar-producao.mjs`: checagem somente de leitura da publicação e privacidade da API.

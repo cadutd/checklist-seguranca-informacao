@@ -105,17 +105,17 @@ describe('Edge Functions integradas ao PostgreSQL', () => {
     expect((await enviar(requisicao({ ...dadosEnvio(), ...alteracoes }))).status).toBe(400)
     expect(await rpc('listar_resultados')).toEqual([])
   })
-  it('protege exportação, importação e limpeza com chave e confirmação no servidor', async () => {
+  it('valida exportação, importação e limpeza com as respectivas regras de chave e confirmação no servidor', async () => {
     await importarExemplos()
     expect((await administrar(requisicao({ acao: 'exportar' }))).status).toBe(401)
-    expect((await administrar(requisicao({ acao: 'limpar', confirmacao: 'EXCLUIR TUDO' }, false, { 'x-admin-key': 'incorreta' }))).status).toBe(401)
-    expect((await administrar(requisicao({ acao: 'limpar', confirmacao: 'não' }, true))).status).toBe(400)
+    expect((await administrar(requisicao({ acao: 'importar', backup: {} }))).status).toBe(401)
+    expect((await administrar(requisicao({ acao: 'limpar', confirmacao: 'não' }))).status).toBe(400)
     const exportacao = await administrar(requisicao({ acao: 'exportar' }, true))
     expect(exportacao.status).toBe(200)
     const backup = await exportacao.json()
     expect(backup.diagnosticos).toHaveLength(5)
     expect(backup.diagnosticos[0]).toHaveProperty('respostas')
-    expect((await administrar(requisicao({ acao: 'limpar', confirmacao: 'EXCLUIR TUDO' }, true))).status).toBe(200)
+    expect((await administrar(requisicao({ acao: 'limpar', confirmacao: 'EXCLUIR TUDO' }))).status).toBe(200)
     expect(await rpc('listar_resultados')).toEqual([])
     // A limpeza também reinicia os controles administrativos desta base isolada.
     const restauracao = await administrar(requisicao({ acao: 'importar', backup }, true))

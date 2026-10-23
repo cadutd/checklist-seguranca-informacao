@@ -129,3 +129,12 @@ it('envia o JWT público ao gateway administrativo e mantém a chave administrat
   expect(buscar.mock.calls[0][1].headers['x-admin-key']).toBe('chave-administrativa-de-teste')
   expect(buscar.mock.calls[0][1].body).not.toContain('chave-administrativa-de-teste')
 })
+
+it('envia a limpeza sem chave administrativa e com confirmação explícita', async () => {
+  const buscar = vi.fn().mockResolvedValue(new Response(JSON.stringify({ excluidos: 3 })))
+  vi.stubGlobal('fetch', buscar)
+  const repositorio = criarRepositorioSupabase({ url: 'https://exemplo.supabase.co', chave: 'eyJ.publica.assinatura' })
+  expect(await repositorio.limpar('EXCLUIR TUDO', '')).toEqual({ excluidos: 3 })
+  expect(buscar.mock.calls[0][1].headers['x-admin-key']).toBeUndefined()
+  expect(JSON.parse(buscar.mock.calls[0][1].body)).toEqual({ acao: 'limpar', confirmacao: 'EXCLUIR TUDO' })
+})

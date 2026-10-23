@@ -36,7 +36,7 @@ function DialogoDados({ acao, fechar, concluir }: { acao: Acao; fechar: () => vo
   async function executar(evento: FormEvent) {
     evento.preventDefault()
     if (bloqueio.current || lendo) return
-    if (modo === 'supabase' && !chave.trim()) { definirErro('Informe a chave administrativa.'); return }
+    if (modo === 'supabase' && acao !== 'limpar' && !chave.trim()) { definirErro('Informe a chave administrativa.'); return }
     if (acao === 'limpar' && confirmacao !== 'EXCLUIR TUDO') return
     if (acao === 'importar' && !backup) return
     bloqueio.current = true; definirOcupado(true); definirErro('')
@@ -61,7 +61,7 @@ function DialogoDados({ acao, fechar, concluir }: { acao: Acao; fechar: () => vo
       <h2 id="titulo-dialogo">{titulos[acao]}</h2>
       <p className="texto-apoio">{modo === 'demonstracao' ? 'Demonstração: a operação afeta somente os dados em memória desta aba.' : 'Operação administrativa sobre a base compartilhada do Supabase.'}</p>
       <fieldset disabled={ocupado} className="campos-dialogo">
-        {modo === 'supabase' && <><label htmlFor="chave-administrativa">Chave administrativa</label><input id="chave-administrativa" type="password" autoComplete="off" value={chave} onChange={evento => definirChave(evento.target.value)}/><p className="texto-apoio">Use a chave de administração definida para este aplicativo. Não informe a service_role. A chave é descartada ao fechar.</p></>}
+        {modo === 'supabase' && acao !== 'limpar' && <><label htmlFor="chave-administrativa">Chave administrativa</label><input id="chave-administrativa" type="password" autoComplete="off" value={chave} onChange={evento => definirChave(evento.target.value)}/><p className="texto-apoio">Use a chave de administração definida para este aplicativo. Não informe a service_role. A chave é descartada ao fechar.</p></>}
         {acao === 'exportar' && <p>O JSON incluirá os diagnósticos e suas respostas, para permitir restauração. Este arquivo não deve ser compartilhado publicamente.</p>}
         {acao === 'importar' && <><label htmlFor="arquivo-json">Arquivo JSON de backup</label><input id="arquivo-json" type="file" accept=".json,application/json" onChange={evento => void selecionarArquivo(evento.target.files?.[0])}/><p className="texto-apoio">Até 5 MB e 5.000 diagnósticos. As notas serão recalculadas. IDs já existentes serão ignorados; dados atuais não serão sobrescritos.</p>{lendo && <p role="status">Validando arquivo…</p>}{backup && <p className="aviso sucesso">Arquivo válido: {backup.diagnosticos.length} diagnóstico(s) para importar.</p>}</>}
         {acao === 'limpar' && <><p className="alerta-exclusao">Todos os diagnósticos serão excluídos ({diagnosticos.length} atualmente no painel). A exclusão não pode ser desfeita na aplicação. Você pode exportar um backup antes.</p><label htmlFor="confirmacao-exclusao">Digite EXCLUIR TUDO para confirmar</label><input id="confirmacao-exclusao" value={confirmacao} autoComplete="off" onChange={evento => definirConfirmacao(evento.target.value)}/></>}

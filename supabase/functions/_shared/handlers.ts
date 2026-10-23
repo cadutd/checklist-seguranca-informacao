@@ -72,13 +72,14 @@ export function criarHandler(tipo: 'enviar' | 'administrar', deps: DependenciasS
       const origemHash = await hashOrigem(req, sal)
       const permitido = await deps.rpc('verificar_limite', { p_origem: origemHash, p_administrativo: tipo === 'administrar' })
       if (permitido !== true) throw new ErroHttp(429, 'Limite de requisições atingido. Aguarde antes de tentar novamente.')
-      if (tipo === 'administrar') {
+      const entrada = await lerJson(req, tipo === 'enviar' ? 16 * 1024 : limiteArquivo + 1024)
+      const limpeza = tipo === 'administrar' && validar(() => objeto(entrada)).acao === 'limpar'
+      if (tipo === 'administrar' && !limpeza) {
         const esperada = deps.ambiente('ADMIN_API_TOKEN') ?? ''
         if (esperada.length < 32) throw new ErroHttp(503, 'As operações administrativas ainda não foram configuradas.')
         const recebida = req.headers.get('x-admin-key') ?? ''
         if (!recebida || recebida.length > 512 || !await chavesIguais(recebida, esperada)) throw new ErroHttp(401, 'Chave administrativa inválida.')
       }
-      const entrada = await lerJson(req, tipo === 'enviar' ? 16 * 1024 : limiteArquivo + 1024)
       if (tipo === 'enviar') {
         const envio = validar(() => validarEnvio(entrada))
         const assinatura = Array.from(await resumoHash(JSON.stringify({ instituicao: envio.instituicao, respostas: envio.respostas, versaoQuestionario: envio.versaoQuestionario })), valor => valor.toString(16).padStart(2, '0')).join('')

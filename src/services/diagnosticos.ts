@@ -43,8 +43,8 @@ export function criarRepositorioSupabase(configuracao: ConfiguracaoSupabase): Re
       if (!Number.isInteger(dados.importados) || !Number.isInteger(dados.ignorados)) throw new Error('Resposta de importação inválida.')
       return { importados: dados.importados as number, ignorados: dados.ignorados as number }
     },
-    async limpar(confirmacao, chave) {
-      const dados = objeto(await administrar({ acao: 'limpar', confirmacao }, chave))
+    async limpar(confirmacao) {
+      const dados = objeto(await requisitar(configuracao, '/functions/v1/administrar-diagnosticos', { acao: 'limpar', confirmacao }))
       if (!Number.isInteger(dados.excluidos)) throw new Error('Resposta de exclusão inválida.')
       return { excluidos: dados.excluidos as number }
     },

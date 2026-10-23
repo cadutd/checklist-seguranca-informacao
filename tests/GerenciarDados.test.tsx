@@ -58,7 +58,7 @@ describe('Botões de dados do sistema', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('5 diagnóstico(s) adicionado(s)')
     expect(screen.getByTestId('quantidade')).toHaveTextContent('5')
   })
-  it('exige chave na base real, bloqueia duplicidade e preserva o diálogo diante de erro', async () => {
+  it('limpa a base real sem chave, bloqueia duplicidade e preserva o diálogo diante de erro', async () => {
     let rejeitar: (erro: Error) => void = () => {}
     const limpar = vi.fn(() => new Promise<{ excluidos: number }>((_, rejeicao) => { rejeitar = rejeicao }))
     const repositorio = { ...criarRepositorioMemoria(), modo: 'supabase' as const, limpar }
@@ -67,10 +67,7 @@ describe('Botões de dados do sistema', () => {
     await usuario.click(screen.getByRole('button', { name: 'Limpar base de dados' }))
     await usuario.type(screen.getByLabelText('Digite EXCLUIR TUDO para confirmar'), 'EXCLUIR TUDO')
     await usuario.click(screen.getByRole('button', { name: 'Confirmar exclusão de todos os dados' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Informe a chave administrativa')
-    expect(limpar).not.toHaveBeenCalled()
-    await usuario.type(screen.getByLabelText('Chave administrativa'), 'chave-de-teste')
-    await usuario.click(screen.getByRole('button', { name: 'Confirmar exclusão de todos os dados' }))
+    expect(screen.queryByLabelText('Chave administrativa')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Processando…' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Cancelar' })).toBeDisabled()
     expect(limpar).toHaveBeenCalledTimes(1)

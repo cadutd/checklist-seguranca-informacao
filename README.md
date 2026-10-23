@@ -59,7 +59,7 @@ Sem URL e chave configuradas, a aplicação exibe explicitamente a demonstraçã
 
 ## Administração: exportar, importar e limpar
 
-Os três botões ficam em **Dados do sistema**. Participantes não precisam de cadastro ou login. As operações administrativas exigem a chave do aplicativo `ADMIN_API_TOKEN`, além da verificação JWT da plataforma.
+Os três botões ficam em **Dados do sistema**. Participantes não precisam de cadastro ou login. Exportar e importar exigem a chave do aplicativo `ADMIN_API_TOKEN`. A limpeza exige somente digitar exatamente `EXCLUIR TUDO` e confirmar; qualquer visitante pode executá-la. O JWT público da plataforma continua sendo enviado automaticamente.
 
 - **Exportar JSON**: baixa IDs, nomes, respostas, versão do questionário e datas. O backup não contém credenciais nem controles de requisições.
 - **Importar JSON**: valida o arquivo inteiro e recalcula todas as notas no servidor. Preserva IDs e datas; ignora IDs existentes sem sobrescrevê-los. A gravação ocorre em uma única transação. Um registro inválido impede a importação completa.
