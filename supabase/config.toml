@@ -1,0 +1,11 @@
+project_id = "checklist-seguranca-informacao"
+
+# Sem login de participantes. O endpoint público valida e limita cada envio.
+# A função administrativa exige JWT da plataforma e valida sua própria chave em cada chamada.
+[functions.enviar-diagnostico]
+verify_jwt = false
+
+[functions.administrar-diagnosticos]
+verify_jwt = true
+
+
